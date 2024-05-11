@@ -15,11 +15,13 @@ pub enum TokenKind {
     Bad,
     Whitespace,
     String(String),
-    Identifier(String),
-    Definition, // let val, other_val = 1
-    Equals, // '=='
-    While,
-    Loop,
+    Identifier(String), // @TODO: Make this a Identifier struct, takes a String and a bool saying if it's global or not (yuck globals), globals must be defined with const
+    Definition, // let val, other_val = 1 || const val = 5 || val = 3 @TODO: Make this a Definition struct, contains a Vec<Identifier> and a Expression, but ofc both are tokenized
+    // Definitions are both initializer and the updater
+    // Definition structs can also take a bool saying if it's a global or not along with a bool saying if it's on initialization or not
+    Comparative, // '==', '!=', '>', '<', '>=', '<=' @TODO: Make this a Comparative struct, takes a ComparativeKind
+    While, // @TODO:: Make this a While struct
+    Loop, // @TODO:: Make this a Loop struct
     Expression(Expression),
     HardCall(HardCall),
     Override(HardCall),
@@ -221,7 +223,7 @@ impl<'a> Lexer<'a> {
             let end = self.current_position;
             return Token::new(TokenKind::NewLine, TextSpan::new(start, end, self.input[start..end].to_string()));
         }
-        // @TODO: add token handling for functions, variables, bools,
+        // @TODO: add token handling for functions, variables, bools, function calls, class calls
         let end = self.current_position;
         Token::new(TokenKind::Bad, TextSpan::new(start, end, self.input[start..end].to_string()))
     }

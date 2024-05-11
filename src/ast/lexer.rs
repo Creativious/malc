@@ -4,6 +4,7 @@
 pub enum TokenKind {
     Integer(i64),
     Float(f64),
+    Bool(bool),
     Add,
     Sub,
     Exp,
@@ -13,7 +14,9 @@ pub enum TokenKind {
     RParen,
     EOF,
     Bad,
+    Comment,
     Whitespace,
+    Keyword(String), // @TODO: Make a Keyword struct for keywords such as if, else, fn, etc
     String(String),
     Identifier(String), // @TODO: Make this a Identifier struct, takes a String and a bool saying if it's global or not (yuck globals), globals must be defined with const
     Definition, // let val, other_val = 1 || const val = 5 || val = 3 @TODO: Make this a Definition struct, contains a Vec<Identifier> and a Expression, but ofc both are tokenized
@@ -28,7 +31,7 @@ pub enum TokenKind {
     NewLine,
     FunctionCall(String), // @TODO: Make this take a FunctionCall struct
     Comma,
-    FunctionDefinition(FunctionDefinition),
+    FunctionDefinition(FunctionDefinition), // @TODO: Fully flesh this out ofc
     Semicolon,
     None, // all functions return this if nothing is specified
 
@@ -222,6 +225,21 @@ impl<'a> Lexer<'a> {
                     return Token::new(TokenKind::Exp, TextSpan::new(start, end, self.input[start..end].to_string()));
                 }
             }
+            if operator == TokenKind::Div {
+                let next_c = self.current_char();
+                if next_c.is_some() && next_c.unwrap() == '/' {
+                    self.consume_char();
+                    self.consume_comment();
+                    let end = self.current_position;
+                    return Token::new(TokenKind::Comment, TextSpan::new(start, end, self.input[start..end].to_string()));
+                }
+                else if next_c.is_some() && next_c.unwrap() == '*' {
+                    self.consume_char();
+                    self.consume_multiline_comment();
+                    let end = self.current_position;
+                    return Token::new(TokenKind::Comment, TextSpan::new(start, end, self.input[start..end].to_string()));
+                }
+            }
             let end = self.current_position;
             return Token::new(operator, TextSpan::new(start, end, self.input[start..end].to_string()));
 
@@ -244,6 +262,25 @@ impl<'a> Lexer<'a> {
         self.consume_char();
         let end = self.current_position;
         Token::new(TokenKind::Bad, TextSpan::new(start, end, self.input[start..end].to_string()))
+    }
+
+    fn consume_comment(&mut self) {
+        while let Some(c) = self.current_char() {
+            self.consume_char();
+            if Self::is_new_line(&c) {
+                break;
+            }
+        }
+    }
+
+    fn consume_multiline_comment(&mut self) {
+        while let Some(c) = self.current_char() {
+            self.consume_char();
+            if c == '*' && self.current_char() == Some('/') {
+                self.consume_char();
+                break;
+            }
+        }
     }
 
     fn is_whitespace(c: &char) -> bool {

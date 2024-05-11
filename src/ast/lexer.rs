@@ -31,7 +31,10 @@ pub enum TokenKind {
     Function(Function),
     Semicolon,
     None, // all functions return this if nothing is specified
+
+    // Calling App.menu.was_pressed(0) will return these tokens in order, StructCall("App"), StructReference("menu"), FunctionCall("was_pressed"), Integer(0)
     StructCall, // @TODO: Make this take a StructCall struct
+    StructReference, // @TODO: Make this take a StructReference struct
 }
 
 #[derive(Debug, PartialEq)]

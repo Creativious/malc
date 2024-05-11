@@ -28,17 +28,18 @@ pub enum TokenKind {
     NewLine,
     FunctionCall(String), // @TODO: Make this take a FunctionCall struct
     Comma,
-    Function(Function),
+    FunctionDefinition(FunctionDefinition),
     Semicolon,
     None, // all functions return this if nothing is specified
 
     // Calling App.menu.was_pressed(0) will return these tokens in order, StructCall("App"), StructReference("menu"), FunctionCall("was_pressed"), Integer(0)
     StructCall, // @TODO: Make this take a StructCall struct
-    StructReference, // @TODO: Make this take a StructReference struct
+    StructReference, // @TODO: Make this take a StructReference struct,
+    StructDefinition, // @TODO: Maybe some time in the future I'll make it so you can make custom structs, though imma have to be janky on how it converts to the hp prime programming language
 }
 
 #[derive(Debug, PartialEq)]
-pub struct Function {
+pub struct FunctionDefinition {
     name: String,
     tokens: Vec<Token>,
     args: Vec<Token>,

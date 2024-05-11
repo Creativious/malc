@@ -1,0 +1,42 @@
+@name("AngleDraw")
+
+@override("main")
+fn main() {
+
+}
+
+@override("on_start")
+fn start() {
+    let do_redraw = false; // If true redraw the program
+    let angle = 90.0;
+    let default_angle_type = AngleType::Degrees;
+    angle = AngleType::convert(default_angle_type, system.angle_type, angle); // (current_type, new_type, current_value) -> returns the converted value
+
+    loop {
+        if (do_redraw) {
+            Graphics.clear_screen(); // Clears the screen (internally draws a blank rectangle)
+            Graphics.text_field(angle, "Angle", 50, 0, 10); // (current_value: String, label: String, position_x: Integer, position_y: Integer, width: Integer)
+            draw_angle(angle);
+            Graphics.draw_menu(System.angle_type.name, "Set", "", "", "", "Close"); // Max of 6 arguments, only one is required (non set args are set to "")
+        }
+        // App is a StructCall
+        // but the .menu in App is a StructReference
+        if (App.menu.was_pressed(0)) { // (index: Integer)
+            angle = AngleType.convert(System.angle_type, System.cycle_angle_type(), angle);
+            do_redraw = true;
+        }
+        if (App.menu.was_pressed(1)) {
+            System.input(angle, "Angle Input", "Angle ( " + System.angle_type.name + " )");
+            do_redraw = true;
+        }
+        if (App.menu.was_pressed(5)) break;
+    }
+}
+
+
+fn draw_angle(angle: Float) {
+    Graphics.draw_line(-7, -2, 7, -2, #D0D0D0h); // (start_x: Integer, start_y: Integer, end_x: Integer, end_y: Integer, color: Color)
+    Graphics.draw_line(0, -9, 0, 5, #D0D0D0h);
+    Graphics.draw_line(0, -2, 7, -2, Color.rgb(0, 0, 255));
+    Graphics.draw_line(0, -2, 7 * Math.cos(angle), 7 * Math.cos(angle) - 2, Color.rgb(255, 0, 0));
+}

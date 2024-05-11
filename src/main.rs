@@ -10,7 +10,7 @@ fn main() {
 
     let args: Vec<String> = env::args().collect();
 
-    let input = "@name(\"AngleDraw\")";
+    let input = "@name(\n\"AngleDraw\"\n)";
 
     // @TODO: An issue exists that if for some reason parse_token returns None into an expression for a hard call, the program is in an infinite loop
     let mut lexer = Lexer::new(input);

@@ -386,7 +386,7 @@ impl<'a> Lexer<'a> {
             if c == '(' {
                 break;
             }
-            if !c.is_alphabetic() {
+            if !c.is_alphabetic() && !(c == '_') {
                 return None;
             }
             name.push(c);
@@ -414,6 +414,13 @@ impl<'a> Lexer<'a> {
         let mut string = String::new();
         self.consume_char(); // skips past the first '"'
         while let Some(c) = self.current_char() {
+            if c == '\n' && !self.previous_char()?.eq(&'\\') {
+                return None;
+            }
+            if c == '\\' {
+                self.consume_char();
+                continue;
+            }
             self.consume_char();
             if c == '"' {
                 break;
@@ -421,6 +428,14 @@ impl<'a> Lexer<'a> {
             string.push(c);
         }
         Some(string)
+    }
+
+    fn previous_char(&mut self) -> Option<char> {
+        Some(self.input.chars().nth(self.current_position - 1).unwrap())
+    }
+
+    fn peek_char(&mut self, offset: isize) -> Option<char> {
+        Some(self.input.chars().nth((self.current_position as isize + offset) as usize).unwrap())
     }
 
     fn consume_char(&mut self) -> Option<char> {

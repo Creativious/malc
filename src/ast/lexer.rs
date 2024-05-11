@@ -30,6 +30,7 @@ pub enum TokenKind {
     Comma,
     Function(Function),
     Semicolon,
+    None, // all functions return this if nothing is specified
     StructCall, // @TODO: Make this take a StructCall struct
 }
 
@@ -134,6 +135,14 @@ impl Number {
     pub fn is_float(&self) -> bool {
         self.float != 0.0
     }
+
+    pub fn flip_sign(&mut self) {
+        if self.is_int() {
+            self.int *= -1;
+        } else if self.is_float() {
+            self.float *= -1.0;
+        }
+    }
 }
 
 impl Expression {
@@ -189,29 +198,29 @@ impl<'a> Lexer<'a> {
                 return Token::new(TokenKind::String(string), TextSpan::new(start, end, self.input[start..end].to_string()));
             }
         } else if Self::is_operator(&c) {
-            let option_operator = self.consume_operator();
-            if let Some(operator) = option_operator {
-                if operator == TokenKind::Sub {
-                    let next_c = self.current_char();
-                    if next_c.is_some() && Self::is_number_start(&next_c.unwrap()) {
-                        let number = self.consume_number();
-                        let end = self.current_position;
-                        if let Some(number) = number {
-                            return self.tokenize_number(number, start, end);
-                        }
+            let operator = self.consume_operator();
+            if operator == TokenKind::Sub {
+                let next_c = self.current_char();
+                if next_c.is_some() && Self::is_number_start(&next_c.unwrap()) {
+                    let mut number = self.consume_number();
+                    let end = self.current_position;
+                    if let Some(mut number) = number {
+                        number.flip_sign();
+                        return self.tokenize_number(number, start, end);
                     }
                 }
-                if operator == TokenKind::Mul {
-                    let next_c = self.current_char();
-                    if next_c.is_some() && next_c.unwrap() == '*' {
-                        self.consume_char();
-                        let end = self.current_position;
-                        return Token::new(TokenKind::Exp, TextSpan::new(start, end, self.input[start..end].to_string()));
-                    }
-                }
-                let end = self.current_position;
-                return Token::new(operator, TextSpan::new(start, end, self.input[start..end].to_string()));
             }
+            if operator == TokenKind::Mul {
+                let next_c = self.current_char();
+                if next_c.is_some() && next_c.unwrap() == '*' {
+                    self.consume_char();
+                    let end = self.current_position;
+                    return Token::new(TokenKind::Exp, TextSpan::new(start, end, self.input[start..end].to_string()));
+                }
+            }
+            let end = self.current_position;
+            return Token::new(operator, TextSpan::new(start, end, self.input[start..end].to_string()));
+
         } else if Self::is_number_start(&c) {
             let number = self.consume_number();
             let end = self.current_position;
@@ -222,10 +231,28 @@ impl<'a> Lexer<'a> {
             self.consume_char();
             let end = self.current_position;
             return Token::new(TokenKind::NewLine, TextSpan::new(start, end, self.input[start..end].to_string()));
+        } else if Self::is_whitespace(&c) {
+            self.consume_whitespace();
+            let end = self.current_position;
+            return Token::new(TokenKind::Whitespace, TextSpan::new(start, end, self.input[start..end].to_string()));
         }
         // @TODO: add token handling for functions, variables, bools, function calls, class calls
+        self.consume_char();
         let end = self.current_position;
         Token::new(TokenKind::Bad, TextSpan::new(start, end, self.input[start..end].to_string()))
+    }
+
+    fn is_whitespace(c: &char) -> bool {
+        c.is_whitespace()
+    }
+
+    fn consume_whitespace(&mut self) {
+        while let Some(c) = self.current_char() {
+            if !Self::is_whitespace(&c) {
+                break;
+            }
+            self.consume_char();
+        }
     }
 
     fn is_new_line(c: &char) -> bool {
@@ -265,13 +292,12 @@ impl<'a> Lexer<'a> {
             else {
                 break;
             }
-            self.consume_char();
         }
         if (decimal_point && decimal_point_position == self.current_position) {
             return None;
         }
         if decimal_point {
-            Some(Number::new_float(val as f64 / 10.0_f64.powi((self.current_position - decimal_point_position) as i32)))
+            Some(Number::new_float(val as f64 / 10.0_f64.powi((self.current_position - decimal_point_position - 1) as i32)))
         }
         else {
             Some(Number::new_int(val))

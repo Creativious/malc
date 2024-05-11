@@ -1,0 +1,199 @@
+EXPORT AngleDraw()
+BEGIN
+END;
+
+LOCAL txf_bg:= RGB(239, 245, 247), txf_bg_focus:= RGB(200, 206, 208), txf_edge:= RGB(35, 63, 76);
+LOCAL thm_bg:= RGB(255, 255, 255);
+
+LOCAL g_sspx:=320,g_sspy:=240;
+
+LOCAL GET_TEXT_SIZE(txt, fnt)
+BEGIN
+    DIMGROB_P(G9, g_sspx, 32);
+    LOCAL ret:= TEXTOUT_P(txt, G9, 0, 0, fnt);
+    RETURN(ret);
+END;
+
+LOCAL TEXTFIELD(var, label, position_x, position_y, width, focus)
+BEGIN
+    LOCAL font_size:= 2;
+    LOCAL tp:=5,st:=26,ht:=18;// tp=top output pixel for text lines, st=vert. pixel stride,ht=pixel height of text row
+    LOCAL x, y, w;
+    w:= IP(g_sspx*width/100);
+    x:= IP((g_sspx-6.5)*position_x/100);
+    y:= IP(tp+position_y*st);
+    IF NOT(focus) THEN
+        RECT_P(x-3, y-4, x+w+1, y+ht+1, thm_bg, thm_bg);
+        RECT_P(x-2, y-3, x+w, y+ht, txf_edge, txf_bg);
+    ELSE
+        RECT_P(x-3, y-4, x+w+1, y+ht+1, thm_bg, thm_bg);
+        RECT_P(x-2, y-3, x+w, y+ht, txf_edge, txf_bg_focus);
+    END;
+    TEXTOUT_P(label, x-4-GET_TEXT_SIZE(label, font_size+1), y, font_size+1, RGB(0, 0, 0), GET_TEXT_SIZE(label, font_size+1), thm_bg);
+    TEXTOUT_P(var, x, y+2, font_size, RGB(0, 0, 0), w-1);
+END;
+
+CHECK_ANGLE_TYPE()
+BEGIN
+    LOCAL angle_type;
+    CASE
+        IF HAngle == 0 THEN angle_type:= "Radians" END;
+        IF HAngle == 1 THEN angle_type:= "Degrees" END;
+        IF HAngle == 2 THEN angle_type:= "Gradians" END;
+    END;
+    RETURN(angle_type);
+END;
+
+CONVERT_ANGLE_TYPE(old_angle_type, new_angle_type, angle)
+BEGIN
+    LOCAL new_angle:= angle;
+    CASE
+        IF (old_angle_type == 0) AND (new_angle_type == 1) THEN new_angle:= angle * (180/PI) END;
+        IF (old_angle_type == 0) AND (new_angle_type == 2) THEN new_angle:= angle * (200/PI) END;
+
+        IF (old_angle_type == 1) AND (new_angle_type == 0) THEN new_angle:= angle * (PI/180) END;
+        IF (old_angle_type == 1) AND (new_angle_type == 2) THEN new_angle:= angle * (200/180) END;
+
+        IF (old_angle_type == 2) AND (new_angle_type == 0) THEN new_angle:= angle * (PI/200) END;
+        IF (old_angle_type == 2) AND (new_angle_type == 1) THEN new_angle:= angle * (180/200) END;
+    END;
+    RETURN(new_angle);
+END;
+
+
+
+DRAW_ANGLE(angle)
+BEGIN
+    LINE(-7, -2, 7, -2, #D0D0D0h);
+    LINE(0, -9, 0, 5, #D0D0D0h);
+    LOCAL line_start_x, line_start_y, line_end_x, line_end_y;
+    line_start_x:= 0;
+    line_start_y:= -2;
+    line_end_x:= 7 * COS(angle);
+    line_end_y:= 7 * SIN(angle) -2;
+
+    LINE(line_start_x, line_start_y, 7, -2, RGB(0, 0, 255));
+    LINE(line_start_x, line_start_y, line_end_x, line_end_y, RGB(255, 0, 0));
+END;
+
+CYCLE_ANGLE_TYPE(angle)
+BEGIN
+    LOCAL new_angle_type, new_angle:= angle;
+    IF HAngle == 2 THEN
+        new_angle_type:= 0
+    ELSE
+        new_angle_type:= HAngle + 1;
+    END;
+
+    new_angle:= CONVERT_ANGLE_TYPE(HAngle, new_angle_type, angle);
+    HAngle:= new_angle_type;
+    RETURN(new_angle);
+END;
+
+START()
+BEGIN
+    LOCAL done, txf_edge, txf_bg, txf_bg_focus, state, angle, focus, angle_type;
+    LOCAL ms, mnu, button_map, field_count;
+    done:= 0;
+    field_count:= 1;
+    button_map:= {0,0,0,0,0,0}; // Active button map. 0 = Inactive, 1 = Active
+    state:= 0;
+    focus:= 0;
+    angle:= CONVERT_ANGLE_TYPE(1, HAngle, 90);
+    // This is ran when you open the app
+    REPEAT
+        IF (state == 0) THEN
+            // Draw cycle
+            RECT_P();
+            TEXTFIELD(angle, "Angle", 50, 0, 10, focus==1);
+            DRAW_ANGLE(angle);
+            DRAWMENU(CHECK_ANGLE_TYPE, "Set", "", "", "", "Close");
+            button_map:= {1, 1, 0, 0, 0, 1};
+            state:= 1;
+        END;
+        ms:= WAIT(-1);
+        // Keyboard processing (nothing for rn)
+        IF (TYPE(ms) == 0) AND (ms > -1) THEN
+
+        END;
+
+        // Mouse event processing, I guess?
+        IF (TYPE(ms) == 6) AND (ms(1) == 3) THEN
+            mnu:=((IP(ms(2)/53)+1+IP(ms(2)/318)*-1)*(ms(3)>219)); // Map x,y to button 1..6, or 0 for button miss
+            IF (mnu > 0 ) AND button_map(mnu) THEN
+                IF mnu == 1 THEN
+                    state:= 0;
+                    angle:= CYCLE_ANGLE_TYPE(angle);
+                END;
+                IF mnu == 2 THEN
+                    state:= 0;
+                    INPUT(angle, "Angle Input", "Angle ( " + CHECK_ANGLE_TYPE + " )")
+                END;
+                IF mnu == 6 THEN
+                    done:= 1
+                END;
+            END;
+
+        END;
+
+
+    UNTIL done;
+END;
+
+RESET()
+BEGIN
+
+    // This is ran when you reset the app
+
+END;
+
+// Values for STARTVIEW command:
+
+// 0: Symbolic
+// 1: Plot
+// 2: Numeric
+// 3: Symbolic Setup
+// 4: Plot Setup
+// 5: Numeric Setup
+// 6: App Info
+// 7: View Menu
+// 8: First special view (Split Screen Plot Detail)
+// 9: Second special view (Split Screen Plot Table)
+// 10: Third special view (Autoscale)
+// 11: Fourth special view (Decimal)
+// 12: Fifth special view (Integer)
+// 13: Sixth special view (Trig)
+
+// Symb
+// Startview 0 - symb, 1 - plot
+Symb()
+BEGIN
+
+END;
+
+Plot()
+BEGIN
+
+END;
+
+Num()
+BEGIN
+
+END;
+
+PlotSetup()
+BEGIN
+END;
+
+SymbSetup()
+BEGIN
+END;
+
+NumSetup()
+BEGIN
+END;
+
+KEY K_Home()
+BEGIN
+RETURN;
+END;

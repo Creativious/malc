@@ -1,0 +1,6 @@
+@name("AngleDraw")
+
+@override("main")
+fn main() {
+
+}

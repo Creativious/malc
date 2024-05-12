@@ -1,5 +1,4 @@
 
-
 #[derive(Debug, PartialEq)]
 pub enum TokenKind {
     Integer(i64),
@@ -8,6 +7,7 @@ pub enum TokenKind {
     Add,
     Sub,
     Exp,
+    Keyword(Keyword),
     Mul,
     Div,
     LParen,
@@ -16,9 +16,8 @@ pub enum TokenKind {
     Bad,
     Comment,
     Whitespace,
-    Keyword(String), // @TODO: Make a Keyword struct for keywords such as if, else, fn, etc
     String(String),
-    Identifier(String), // @TODO: Make this a Identifier struct, takes a String and a bool saying if it's global or not (yuck globals), globals must be defined with const
+    Identifier(Identifier), // @TODO: Make this a Identifier struct, takes a String and a bool saying if it's global or not (yuck globals), globals must be defined with const
     Definition, // let val, other_val = 1 || const val = 5 || val = 3 @TODO: Make this a Definition struct, contains a Vec<Identifier> and a Expression, but ofc both are tokenized
     // Definitions are both initializer and the updater
     // Definition structs can also take a bool saying if it's a global or not along with a bool saying if it's on initialization or not
@@ -29,10 +28,19 @@ pub enum TokenKind {
     HardCall(HardCall),
     Override(HardCall),
     NewLine,
+    If,
+    IfElse,
+    Else,
+    LCurly,
+    RCurly,
+    Return,
+    Break,
+    Continue,
     FunctionCall(String), // @TODO: Make this take a FunctionCall struct
     Comma,
     FunctionDefinition(FunctionDefinition), // @TODO: Fully flesh this out ofc
     Semicolon,
+    ArgDefinition(ArgDefinition),
     None, // all functions return this if nothing is specified
 
     // Calling App.menu.was_pressed(0) will return these tokens in order, StructCall("App"), StructReference("menu"), FunctionCall("was_pressed"), Integer(0)
@@ -42,11 +50,96 @@ pub enum TokenKind {
 }
 
 #[derive(Debug, PartialEq)]
+pub enum IdentifierKinds {
+    Integer,
+    Float,
+    Boolean,
+    String,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct ArgDefinition {
+    pub identifier: Identifier,
+    pub kind: IdentifierKinds,
+}
+
+impl ArgDefinition {
+    pub fn new(identifier: Identifier, kind: IdentifierKinds) -> Self {
+        Self { identifier, kind }
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct Keyword {
+    name: String,
+    kind: KeywordKind,
+}
+
+impl Keyword {
+    pub fn new(name: String, kind: KeywordKind) -> Self {
+        Self { name, kind }
+    }
+
+    pub fn new_from_str(name: &str, kind: KeywordKind) -> Self {
+        Self { name: name.to_string(), kind }
+    }
+
+    pub fn get_keyword_kind_from_name(name: &str) -> Option<KeywordKind> {
+        match name {
+            "let" => Some(KeywordKind::Let),
+            "const" => Some(KeywordKind::Const),
+            "if" => Some(KeywordKind::If),
+            "else" => Some(KeywordKind::Else),
+            "return" => Some(KeywordKind::Return),
+            "break" => Some(KeywordKind::Break),
+            "continue" => Some(KeywordKind::Continue),
+            "while" => Some(KeywordKind::While),
+            "loop" => Some(KeywordKind::Loop),
+            "fn" => Some(KeywordKind::Function),
+            "true" => Some(KeywordKind::True),
+            "false" => Some(KeywordKind::False),
+            "none" => Some(KeywordKind::None),
+            _ => None
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum KeywordKind {
+    Let,
+    Const,
+    If,
+    Else,
+    Return,
+    Break,
+    Continue,
+    While,
+    Loop,
+    Function,
+    None,
+    True,
+    Variable, // Defaults to true
+    False
+}
+#[derive(Debug, PartialEq)]
 pub struct FunctionDefinition {
     name: String,
+    definition_keyword: Keyword,
     tokens: Vec<Token>,
-    args: Vec<Token>,
-    return_type: Box<Token>,
+    args: Vec<ArgDefinition>,
+    return_type: Option<IdentifierKinds>,
+}
+
+impl FunctionDefinition {
+    pub fn new(name: String, definition_keyword: Keyword, tokens: Vec<Token>, args: Vec<ArgDefinition>, return_type: Option<IdentifierKinds>) -> Self {
+        Self {
+            name,
+            definition_keyword,
+            tokens,
+            args,
+            return_type
+        }
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -110,6 +203,19 @@ impl HardCall {
 pub enum ExpressionKind {
     Argument,
     Definition,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct Identifier {
+    name: String,
+}
+
+impl Identifier {
+    pub fn new(name: String) -> Self {
+        Self {
+            name
+        }
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -251,6 +357,10 @@ impl<'a> Lexer<'a> {
             }
         } else if Self::is_new_line(&c) {
             self.consume_char();
+            let mut new_c = self.current_char();
+            if new_c.is_some() && new_c.unwrap() == '\n' {
+                self.consume_char();
+            }
             let end = self.current_position;
             return Token::new(TokenKind::NewLine, TextSpan::new(start, end, self.input[start..end].to_string()));
         } else if Self::is_whitespace(&c) {
@@ -258,10 +368,318 @@ impl<'a> Lexer<'a> {
             let end = self.current_position;
             return Token::new(TokenKind::Whitespace, TextSpan::new(start, end, self.input[start..end].to_string()));
         }
+        else if Self::is_curly_bracket(&c) {
+            let mut kind = self.consume_curly_bracket();
+            let end = self.current_position;
+            if let Some(unwrapped_kind) = kind {
+                return Token::new(unwrapped_kind, TextSpan::new(start, end, self.input[start..end].to_string()));
+            }
+
+        }
+        else if Self::is_possible_keyword_or_identifier(&c) {
+            let mut keyword = self.consume_keyword();
+            if keyword.is_some() {
+                let mut unwrapped_keyword = keyword.unwrap();
+                if (unwrapped_keyword.kind == KeywordKind::Function) {
+                    let mut option_function_definition = self.consume_function_definition(unwrapped_keyword);
+                    if option_function_definition.is_some() {
+                        let function_definition = option_function_definition.unwrap();
+                        let end = self.current_position;
+                        return Token::new(TokenKind::FunctionDefinition(function_definition), TextSpan::new(start, end, self.input[start..end].to_string()));
+                    }
+                    else {
+                        let end = self.current_position;
+                        return Token::new(TokenKind::Bad, TextSpan::new(start, end, self.input[start..end].to_string()));
+                    }
+                }
+
+                let end = self.current_position;
+
+                return Token::new(TokenKind::Keyword(unwrapped_keyword), TextSpan::new(start, end, self.input[start..end].to_string()));
+            }
+            else {
+                let mut end = self.current_position;
+                let string = self.input[start..end].to_string();
+                return Token::new(TokenKind::Identifier(Identifier::new(string)), TextSpan::new(start, end, self.input[start..end].to_string()));
+            }
+        }
         // @TODO: add token handling for functions, variables, bools, function calls, class calls
         self.consume_char();
         let end = self.current_position;
         Token::new(TokenKind::Bad, TextSpan::new(start, end, self.input[start..end].to_string()))
+    }
+
+    fn is_curly_bracket(c: &char) -> bool {
+        (*c == '}') || (*c == '{')
+    }
+
+    fn consume_curly_bracket(&mut self) -> Option<TokenKind> {
+        let c = self.current_char();
+        if let Some(ch) = c {
+            if Self::is_curly_bracket(&ch) {
+                if ch == '}' {
+                    self.consume_char();
+                    return Some(TokenKind::RCurly);
+                }
+                else if ch == '{' {
+                    self.consume_char();
+                    return Some(TokenKind::LCurly);
+                }
+            }
+        }
+        None
+    }
+
+    fn consume_function_definition(&mut self, keyword: Keyword) -> Option<FunctionDefinition> {
+        let mut next_token = self.parse_token();
+        if next_token.kind != TokenKind::Whitespace {
+            return None;
+        }
+
+        next_token = self.parse_token();
+        if (next_token.kind == TokenKind::Whitespace || next_token.kind == TokenKind::NewLine) {
+            while let other_token = self.parse_token() {
+                if other_token.kind != TokenKind::Whitespace && other_token.kind != TokenKind::NewLine {
+                    next_token = other_token;
+                    break;
+                }
+            }
+        }
+        let mut function_name = String::new();
+        if let TokenKind::Identifier(identifier) = next_token.kind {
+            function_name = identifier.name;
+        }
+
+        println!("Function name: {}", function_name);
+        next_token = self.parse_token();
+        if (next_token.kind == TokenKind::Whitespace || next_token.kind == TokenKind::NewLine) {
+            while let other_token = self.parse_token() {
+                if other_token.kind != TokenKind::Whitespace && other_token.kind != TokenKind::NewLine {
+                    next_token = other_token;
+                    break;
+                }
+            }
+        }
+        println!("{:?}", next_token.kind);
+        if next_token.kind != TokenKind::LParen {
+            return None;
+        }
+
+        next_token = self.parse_token();
+        if (next_token.kind == TokenKind::Whitespace || next_token.kind == TokenKind::NewLine) {
+            while let other_token = self.parse_token() {
+                if other_token.kind != TokenKind::Whitespace && other_token.kind != TokenKind::NewLine {
+                    next_token = other_token;
+                    break;
+                }
+            }
+        }
+        println!("{:?}", next_token.kind);
+        let mut args: Vec<ArgDefinition> = Vec::new();
+        if next_token.kind != TokenKind::RParen {
+            while let Some(c) = self.current_char() {
+                if c == ')' {
+                    self.consume_char();
+                    break;
+                }
+                if c == ',' {
+                    self.consume_char();
+                    continue;
+                }
+                let mut toke = self.parse_token();
+                if (toke.kind == TokenKind::Whitespace || toke.kind == TokenKind::NewLine) {
+                    while let other_token = self.parse_token() {
+                        if other_token.kind != TokenKind::Whitespace && other_token.kind != TokenKind::NewLine {
+                            toke = other_token;
+                            break;
+                        }
+                    }
+                }
+                let mut definition: ArgDefinition;
+                let next_c = self.current_char();
+                if (next_c != Some(':')) {
+                    return None;
+                }
+                let mut identifier: Identifier;
+                if let TokenKind::Identifier(id) = toke.kind {
+                    identifier = id;
+                } else {
+                    return None;
+                }
+                self.consume_char();
+                let mut other_identifier: Identifier;
+                toke = self.parse_token();
+                if (toke.kind == TokenKind::Whitespace || toke.kind == TokenKind::NewLine) {
+                    while let other_token = self.parse_token() {
+                        if other_token.kind != TokenKind::Whitespace && other_token.kind != TokenKind::NewLine {
+                            toke = other_token;
+                            break;
+                        }
+                    }
+                }
+                if let TokenKind::Identifier(id) = toke.kind {
+                    other_identifier = id;
+                } else {
+                    return None;
+                }
+                let name_type = other_identifier.name;
+                let kind = match name_type.as_str() {
+                    "int" => Some(IdentifierKinds::Integer),
+                    "integer" => Some(IdentifierKinds::Integer),
+                    "i64" => Some(IdentifierKinds::Integer),
+                    "f64" => Some(IdentifierKinds::Float),
+                    "float" => Some(IdentifierKinds::Float),
+                    "string" => Some(IdentifierKinds::String),
+                    "bool" => Some(IdentifierKinds::Boolean),
+                    "boolean" => Some(IdentifierKinds::Boolean),
+                    _ => None
+                };
+
+                if kind.is_none() {
+                    return None;
+                }
+
+                definition = ArgDefinition::new(identifier, kind?);
+                args.push(definition);
+            }
+            if let Some(c) = self.previous_char() {
+                if c != ')' {
+                    return None;
+                }
+            }
+            else {
+                return None
+            }
+        }
+
+        next_token = self.parse_token();
+        if (next_token.kind == TokenKind::Whitespace || next_token.kind == TokenKind::NewLine) {
+            while let other_token = self.parse_token() {
+                if other_token.kind != TokenKind::Whitespace && other_token.kind != TokenKind::NewLine {
+                    next_token = other_token;
+                    break;
+                }
+            }
+        }
+        println!("{:?}", next_token.kind);
+        let mut return_type: Option<IdentifierKinds> = None;
+        if next_token.kind == TokenKind::Sub {
+            if let Some(c) = self.current_char() {
+                if c == '>' {
+                    self.consume_char();
+                    next_token = self.parse_token();
+                    if (next_token.kind == TokenKind::Whitespace || next_token.kind == TokenKind::NewLine) {
+                        while let other_token = self.parse_token() {
+                            if other_token.kind != TokenKind::Whitespace && other_token.kind != TokenKind::NewLine {
+                                next_token = other_token;
+                                break;
+                            }
+                        }
+                    }
+                    if let TokenKind::Identifier(id) = next_token.kind {
+                        let mut name_type = id.name;
+                        let kind = match name_type.as_str() {
+                            "int" => Some(IdentifierKinds::Integer),
+                            "integer" => Some(IdentifierKinds::Integer),
+                            "i64" => Some(IdentifierKinds::Integer),
+                            "f64" => Some(IdentifierKinds::Float),
+                            "float" => Some(IdentifierKinds::Float),
+                            "string" => Some(IdentifierKinds::String),
+                            "bool" => Some(IdentifierKinds::Boolean),
+                            "boolean" => Some(IdentifierKinds::Boolean),
+                            _ => None
+                        };
+                        if kind.is_none() {
+                            return None;
+                        }
+                        return_type = kind;
+                    } else {
+                        return None;
+                    }
+                }
+                else {
+                    return None;
+                }
+            }
+            else {
+                return None
+            }
+            next_token = self.parse_token();
+            if (next_token.kind == TokenKind::Whitespace || next_token.kind == TokenKind::NewLine) {
+                while let other_token = self.parse_token() {
+                    if other_token.kind != TokenKind::Whitespace && other_token.kind != TokenKind::NewLine {
+                        next_token = other_token;
+                        break;
+                    }
+                }
+            }
+            println!("{:?}", next_token.kind);
+            if next_token.kind != TokenKind::LCurly {
+                return None;
+            }
+        }
+        else if next_token.kind != TokenKind::LCurly {
+            return None;
+        }
+
+        let mut tokens = Vec::new();
+        while let next_token = self.parse_token() {
+            if next_token.kind == TokenKind::RCurly {
+                break;
+            }
+            tokens.push(next_token);
+        }
+        let mut function_def = FunctionDefinition::new(
+            function_name,
+            keyword,
+            tokens,
+            args,
+            return_type
+        );
+        Some(function_def)
+    }
+
+    fn has_bad_args(args: &Vec<Token>) -> bool {
+        // check for bad args
+        args.iter().any(|arg| arg.kind == TokenKind::Bad)
+    }
+
+    fn consume_args(&mut self) -> Vec<Token> {
+        let mut args = Vec::new();
+        while let Some(c) = self.current_char() {
+            if c == ')' {
+                self.consume_char();
+                break;
+            }
+            args.push(self.parse_token());
+        }
+        args
+    }
+
+    fn consume_keyword(&mut self) -> Option<Keyword> {
+        let mut string = String::new();
+        while let Some(c) = self.current_char() {
+            if !Self::is_possible_keyword_or_identifier(&c) {
+                break;
+            }
+            string.push(c);
+            self.consume_char();
+        }
+        // match string to const keywords
+        let mut keyword_kind = Keyword::get_keyword_kind_from_name(string.as_str());
+        if keyword_kind.is_none() {
+            return None;
+        }
+        else {
+            return Some(Keyword::new(string, keyword_kind.unwrap()));
+        }
+        None
+
+
+    }
+
+    fn is_possible_keyword_or_identifier(c: &char) -> bool {
+        c.is_alphanumeric() || c == &'_'
     }
 
     fn consume_comment(&mut self) {
@@ -297,7 +715,7 @@ impl<'a> Lexer<'a> {
     }
 
     fn is_new_line(c: &char) -> bool {
-        c == &'\n'
+        c == &'\n' || c == &'\r'
     }
 
     fn tokenize_number(&mut self, number: Number, start: usize, end: usize) -> Token {
